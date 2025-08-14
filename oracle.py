@@ -62,35 +62,35 @@ class HashMapper:
 if __name__ == "__main__":
     # Create a HashMapper with a table size (adjusted to 9999 per request)
     mapper = HashMapper(table_size=9999)
-    # Input first: Get words from user input
-    user_input = input("Enter your input text or words (space-separated for multiple): ")
-    user_words = user_input.split()
-    mapper.insert_words(user_words)
-    print(f"Inserted {len(user_words)} words from input.")
-    # Then, get words from a text file (limited to first 99999 characters; assumes "test.txt" exists locally)
     with open("test.txt", 'r', encoding='utf-8') as f:
         sample_text = f.read()[:99999]
     text_words = sample_text.split()
-    mapper.insert_words(text_words)
-    print(f"Inserted {len(text_words)} words from text (duplicates ignored).")
-    # Customized print: For each user input word, find and print a different word via hash-derived probing
-    print("\nDifferent words from input via hash:")
-    for word in user_words:
-        if word not in mapper.word_to_index:
-            print(f"'{word}' not in mapper (skipped).")
-            continue
-        hash_index = mapper._compute_hash(word)
-        step = mapper._compute_step(word)
-        probe_index = (hash_index + step) % mapper.table_size
-        start_probe = probe_index
-        found = False
-        while True:
-            if mapper.table[probe_index] is not None and mapper.table[probe_index] != word:
-                print(f"For '{word}' (hash {hash_index}, step {step}), encrypted word: '{mapper.table[probe_index]}' (at index {probe_index})")
-                found = True
-                break
-            probe_index = (probe_index + step) % mapper.table_size
-            if probe_index == start_probe:
-                break  # Full cycle; no different word found
-        if not found:
-            print(f"No different word found for '{word}' (table may be sparse or isolated).")
+    while True:
+        # Input first: Get words from user input
+        user_input = input("\nEnter your input text or words (space-separated for multiple): ")
+        user_words = user_input.split()
+        mapper.insert_words(user_words)
+        print(f"Inserted {len(user_words)} words from input.")
+        mapper.insert_words(text_words)
+        print(f"Inserted {len(text_words)} words from text (duplicates ignored).")
+        # Customized print: For each user input word, find and print a different word via hash-derived probing
+        print("Different words from input via hash:")
+        for word in user_words:
+            if word not in mapper.word_to_index:
+                print(f"'{word}' not in mapper (skipped).")
+                continue
+            hash_index = mapper._compute_hash(word)
+            step = mapper._compute_step(word)
+            probe_index = (hash_index + step) % mapper.table_size
+            start_probe = probe_index
+            found = False
+            while True:
+                if mapper.table[probe_index] is not None and mapper.table[probe_index] != word:
+                    print(f"For '{word}' (hash {hash_index}, step {step}), encrypted word: '{mapper.table[probe_index]}' (at index {probe_index})")
+                    found = True
+                    break
+                probe_index = (probe_index + step) % mapper.table_size
+                if probe_index == start_probe:
+                    break  # Full cycle; no different word found
+            if not found:
+                print(f"No different word found for '{word}' (table may be sparse or isolated).")
