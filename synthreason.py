@@ -1,114 +1,96 @@
-import sys
-import re
+import hashlib
 
-# Pronoun to Op Code Mapping (custom "op codes" as integers; extend as needed)
-# Non-pronouns will default to 0x05 (XOR) for processing all words
-PRONOUN_OP_CODES = {
-    'I': 0x01,      # e.g., Op for addition
-    'you': 0x02,    # e.g., Op for subtraction
-    'he': 0x03,     # e.g., Op for multiplication
-    'she': 0x04,    # e.g., Op for division (integer)
-    'it': 0x05,     # e.g., Op for XOR
-    'they': 0x06,   # e.g., Op for modulo
-    # Add more pronouns or custom mappings here
-}
+class HashMapper:
+    def __init__(self, table_size=100):
+        """
+        Initialize the hash mapper with a fixed table size.
+        - table_size: The size of the hash table (should be larger than expected number of words to minimize collisions).
+        """
+        self.table_size = table_size
+        self.table = [None] * table_size  # Stores words at their probed indices
+        self.word_to_index = {}  # Dict for word -> index
+        self.index_to_word = {}  # Dict for index -> word
 
-# Default op code for non-pronouns
-DEFAULT_OP_CODE = 0x05  # XOR, to ensure all words get algebraic processing
+    def _compute_hash(self, word):
+        """Compute initial hash index for the word using SHA-256."""
+        sha_digest = hashlib.sha256(word.encode('utf-8')).hexdigest()
+        int_hash = int(sha_digest, 16)
+        return int_hash % self.table_size
 
-# Simple algebraic operations based on op codes
-def apply_op_code(op_code, val1, val2):
-    if op_code == 0x01: return val1 + val2
-    elif op_code == 0x02: return val1 - val2
-    elif op_code == 0x03: return val1 * val2
-    elif op_code == 0x04: return val1 // val2 if val2 != 0 else 0
-    elif op_code == 0x05: return val1 ^ val2  # XOR as core operation
-    elif op_code == 0x06: return val1 % val2 if val2 != 0 else 0
-    return val1  # Default: no-op
+    def _compute_step(self, word):
+        """Compute a probing step derived from the SHA-256 hash (for double hashing-like behavior)."""
+        sha_digest = hashlib.sha256(word.encode('utf-8')).hexdigest()
+        int_hash = int(sha_digest, 16)
+        # Derive step from higher bits; ensure it's between 1 and table_size-1
+        step = 1 + (int_hash // self.table_size) % (self.table_size - 1)
+        return step
 
-# Function to convert a word to a "hash" value defined by the word itself (sum of ord(c) % 2^16)
-def word_defined_hash(word):
-    hash_val = sum(ord(c) for c in word)
-    return hash_val % (2**16)  # 16-bit value for simplicity
+    def insert(self, word):
+        """
+        Insert a word into the hash table using linear probing.
+        If the word already exists, do nothing.
+        """
+        if word in self.word_to_index:
+            return  # Already inserted
+        index = self._compute_hash(word)
+        original_index = index
+        probe = 0
+        while self.table[index] is not None:
+            probe += 1
+            index = (original_index + probe) % self.table_size
+            if probe >= self.table_size:
+                raise ValueError("Hash table is full! Increase table_size.")
+        # Insert the word at the probed index
+        self.table[index] = word
+        self.word_to_index[word] = index
+        self.index_to_word[index] = word
 
-# Simple sentence tokenizer (split on ., !, ? without NLTK)
-def simple_sent_tokenize(text):
-    return re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?|\!)\s', text.strip())
+    def get_index(self, word):
+        """Retrieve the index for a given word."""
+        return self.word_to_index.get(word, None)
 
-# Main processing function
-def process_text(text):
-    sentences = simple_sent_tokenize(text)
-    results = []
-    
-    for sent_idx, sentence in enumerate(sentences):
-        # Simple word tokenizer: split on spaces and punctuation
-        words = re.findall(r'\b\w+\b', sentence.lower())  # Extract words only
-        sent_result = {
-            'sentence': sentence,
-            'input_values': [],  # Positional inputs
-            'output_values': [], # Retrieved outputs
-            'algebraic_logic': []  # Expressed as strings
-        }
-        
-        prev_hash = 0  # For chaining XOR retrieval
-        for word_idx, word in enumerate(words):
-            # Positional logic: Use word position as a base value
-            pos_value = (sent_idx * len(words)) + word_idx  # Simple positional encoding
-            
-            # Determine op_code: Use mapping if pronoun, else default
-            op_code = PRONOUN_OP_CODES.get(word, DEFAULT_OP_CODE)
-            
-            # Semantic retrieval: XOR current word-defined hash with previous for "retrieval"
-            word_hash = word_defined_hash(word)
-            retrieved_value = word_hash ^ prev_hash
-            prev_hash = retrieved_value  # Chain for next
-            
-            # Apply op code algebraically with positional value
-            output = apply_op_code(op_code, pos_value, retrieved_value)
-            
-            # Store input/output
-            sent_result['input_values'].append(f"Pos:{pos_value}, Hash:{word_hash}")
-            sent_result['output_values'].append(output)
-            
-            # Express as algebraic logic string
-            logic_str = f"{word.upper()} (Op {hex(op_code)}) : {pos_value} ⊕ {word_hash} → {output}"
-            sent_result['algebraic_logic'].append(logic_str)
-        
-        if sent_result['algebraic_logic']:  # Now always true if there are words
-            results.append(sent_result)
-    
-    return results
+    def get_word(self, index):
+        """Retrieve the word for a given index."""
+        return self.index_to_word.get(index, None)
 
-# Input/Output Handling
-def main():
-    if len(sys.argv) > 1:
-        # Read from file if provided as argument
-        try:
-            with open(sys.argv[1], 'r') as f:
-                text = f.read()
-        except FileNotFoundError:
-            print("File not found. Using stdin instead.")
-            text = sys.stdin.read()
-    else:
-        # Read from stdin
-        print("Enter text (end with Ctrl+D or Ctrl+Z):")
-        text = input("User:")
-    
-    if not text.strip():
-        print("No input text provided.")
-        return
-    
-    results = process_text(text)
-    
-    # Output results
-    print("\nProcessed Results (Algebraic Logic with Input/Output):")
-    for res in results:
-        print(f"\nSentence: {res['sentence']}")
-        print("Inputs:", res['input_values'])
-        print("Outputs:", res['output_values'])
-        print("Algebraic Logic:")
-        for logic in res['algebraic_logic']:
-            print(f"  {logic}")
+    def insert_words(self, words):
+        """Convenience method to insert a list of words."""
+        for word in words:
+            self.insert(word)
 
+# Example usage
 if __name__ == "__main__":
-    main()
+    # Create a HashMapper with a table size (adjusted to 9999 per request)
+    mapper = HashMapper(table_size=9999)
+    # Input first: Get words from user input
+    user_input = input("Enter your input text or words (space-separated for multiple): ")
+    user_words = user_input.split()
+    mapper.insert_words(user_words)
+    print(f"Inserted {len(user_words)} words from input.")
+    # Then, get words from a text file (limited to first 99999 characters; assumes "test.txt" exists locally)
+    with open("test.txt", 'r') as f:
+        sample_text = f.read()[:99999]
+    text_words = sample_text.split()
+    mapper.insert_words(text_words)
+    print(f"Inserted {len(text_words)} words from text (duplicates ignored).")
+    # Customized print: For each user input word, find and print a different word via hash-derived probing
+    print("\nDifferent words from input via hash:")
+    for word in user_words:
+        if word not in mapper.word_to_index:
+            print(f"'{word}' not in mapper (skipped).")
+            continue
+        hash_index = mapper._compute_hash(word)
+        step = mapper._compute_step(word)
+        probe_index = (hash_index + step) % mapper.table_size
+        start_probe = probe_index
+        found = False
+        while True:
+            if mapper.table[probe_index] is not None and mapper.table[probe_index] != word:
+                print(f"For '{word}' (hash {hash_index}, step {step}), encrypted word: '{mapper.table[probe_index]}' (at index {probe_index})")
+                found = True
+                break
+            probe_index = (probe_index + step) % mapper.table_size
+            if probe_index == start_probe:
+                break  # Full cycle; no different word found
+        if not found:
+            print(f"No different word found for '{word}' (table may be sparse or isolated).")
