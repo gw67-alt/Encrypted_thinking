@@ -68,7 +68,7 @@ if __name__ == "__main__":
     mapper.insert_words(user_words)
     print(f"Inserted {len(user_words)} words from input.")
     # Then, get words from a text file (limited to first 99999 characters; assumes "test.txt" exists locally)
-    with open("test.txt", 'r') as f:
+    with open("test.txt", 'r', encoding='utf-8') as f:
         sample_text = f.read()[:99999]
     text_words = sample_text.split()
     mapper.insert_words(text_words)
