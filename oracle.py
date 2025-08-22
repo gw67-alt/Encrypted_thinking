@@ -61,9 +61,10 @@ class HashMapper:
 # Example usage
 if __name__ == "__main__":
     # Create a HashMapper with a table size (adjusted to 9999 per request)
-    mapper = HashMapper(table_size=9999)
-    with open("test.txt", 'r', encoding='utf-8') as f:
-        sample_text = f.read()[:99999]
+    table = int(input("Table size: "))
+    mapper = HashMapper(table_size=table)
+    with open(input("Filename: "), 'r', encoding='utf-8') as f:
+        sample_text = f.read()[:table*10]
     text_words = sample_text.split()
     while True:
         # Input first: Get words from user input
